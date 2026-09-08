@@ -4,13 +4,16 @@ class Pintor {
     this.lienzo.clear();
   }
 
-  // opciones = { tamano, color: [r,g,b], tipo: 'redondo' | 'cuadrado' | 'spray' }
   dibujarTrazo(x, y, opciones = {}) {
     let tamano = opciones.tamano ?? 20;
-    let col = opciones.color ?? [0, 255, 0];
+    
+    // Forzado a negro si no viene color o si por error llega el verde anterior
+    let col = opciones.color;
+    if (!col || (col[0] === 0 && col[1] === 255 && col[2] === 0)) {
+      col = [0, 0, 0];
+    }
+    
     let tipo = opciones.tipo ?? 'redondo';
-
-    // Invertimos la X para que coincida con la cámara espejo
     let xEspejo = width - x;
 
     this.lienzo.noStroke();
@@ -23,7 +26,6 @@ class Pintor {
         break;
 
       case 'spray':
-        // Varios puntitos dispersos alrededor del centro, como una lata de spray
         for (let i = 0; i < 10; i++) {
           let ang = random(TWO_PI);
           let rad = random(tamano);
@@ -40,18 +42,13 @@ class Pintor {
     }
   }
 
-  // Dibuja el lienzo en el destino indicado (pg). Si no se pasa nada,
-  // dibuja directamente en el canvas principal.
   mostrar(pg) {
     let ctx = pg || window;
     ctx.image(this.lienzo, 0, 0, ctx.width, ctx.height);
   }
 
-  // Borra una zona circular del lienzo (deja transparente) en vez de pintar sobre ella.
-  // Misma convención que dibujarTrazo: recibe x, y "crudos" y espeja internamente.
   borrar(x, y, radio = 35) {
     let xEspejo = width - x;
-
     this.lienzo.erase();
     this.lienzo.noStroke();
     this.lienzo.ellipse(xEspejo, y, radio, radio);

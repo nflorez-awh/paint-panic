@@ -1,6 +1,5 @@
 // personaje.js
-// Personaje travieso e impredecible: reacciona a tus colores, se distrae,
-// se aburre, se emociona, y siempre está tramando algo.
+// Personaje travieso: requiere 5 gestos acumulados para hacer una travesura.
 class PersonajeGenetico {
   constructor(w, h) {
     this.wRect = 50;
@@ -16,36 +15,35 @@ class PersonajeGenetico {
     this.colorCuerpo = [255, 50, 50];
     this.tiempoAtrapado = 0;
 
-    // --- Personalidad aleatoria: cada personaje nace distinto ---
+    // --- Personalidad aleatoria ---
     this.personalidad = {
-      energia: random(0.6, 1.8),      // qué tan rápido/inquieto es
-      curiosidad: random(0.3, 1),     // qué tan seguido "opina" con burbujas
-      terquedad: random(0.5, 1.5),    // cuánto aguanta antes de explotar al encerrarse
-      travieso: random(0.5, 2.2),     // qué tan seguido hace travesuras (bombas/filtros) por su cuenta
-      dramatico: random() < 0.35      // algunos son extra teatrales
+      energia: random(0.6, 1.8),      
+      curiosidad: random(0.3, 1),     
+      terquedad: random(0.5, 1.5),    
+      travieso: random(0.5, 2.2),     
+      dramatico: random() < 0.35      
     };
 
-    // --- Deambular orgánico con ruido Perlin (en vez de random puro) ---
+    // --- Deambular orgánico con ruido Perlin ---
     this.ruidoOffX = random(1000);
     this.ruidoOffY = random(5000);
 
-    // --- Rastro persistente: va dejando una huella tenue de su recorrido ---
+    // --- Rastro persistente ---
     this.temporizadorRastro = 0;
 
-    // --- Estilo cromático propio: cada personaje "nace" con una armonía de color ---
-    // (analoga = tonos vecinos, complementaria = opuestos, triada = 3 tonos equidistantes)
+    // --- Estilo cromático propio ---
     this.tipoArmonia = random(['analoga', 'complementaria', 'triada']);
     this.tonoBase = random(360);
 
-    // --- Simetría: algunos personajes pintan en espejo, como un kaleidoscopio ---
+    // --- Simetría ---
     this.simetria = random(['ninguna', 'ninguna', 'vertical', 'horizontal', 'doble']);
 
-    // --- Impulsos creativos autónomos: bombas de color / filtros sin que lo encierres ---
-    this.temporizadorTravesura = random(90, 220) / this.personalidad.travieso;
+    // --- Impulsos creativos autónomos (Probabilidad de bombas baja) ---
+    this.temporizadorTravesura = random(500, 900) / this.personalidad.travieso;
     this.filtrosDisponibles = ['gris', 'invertir', 'blur', 'posterizar', 'sepia', 'pixelado', 'espejo', 'arcoiris'];
     this.frasesTravesura = ['¡sorpresa!', '¡cambio de look!', '¡boom!', '¡a ver esto!', '¡tachán!', 'jeje...', '¡color va!'];
 
-    // --- Animación de vida: parpadeo, rebote, bamboleo ---
+    // --- Animación de vida ---
     this.anguloBamboleo = random(TWO_PI);
     this.escalaPulso = 1;
     this.parpadeando = false;
@@ -62,147 +60,137 @@ class PersonajeGenetico {
     this.frasesDormido = ['Zzz', 'Zzz...', '(ronquidos)'];
     this.frasesSusto = ['¡AH!', '¡NO!', '¡corre!'];
 
-    // Cooldown para que no cambie de estado todo el tiempo
     this.cooldownCambioEstado = 0;
-
-    // Último conteo de gestos visto (para detectar cuando sube el contador
-    // del detector de movimiento y reaccionar una sola vez por gesto)
     this._ultimoConteoGestos = 0;
+    this.contadorGestosParaTravesura = 0; // Acumulador para los 5 gestos
+    this._estadoPrevioActivo = true; // Para detectar cambios de inactividad
   }
 
   actualizar(pintor, detectorMovimiento, configUI) {
-    // 1. Detección del color que está usando el usuario (Alquimia de Colores)
     let colorActual = configUI && configUI.pincelColor ? configUI.pincelColor : [0, 255, 0];
     let velocidadMod = 1;
 
     if (colorActual[0] > 200 && colorActual[1] < 50) {
-      // ROJO: Lo enfurece, va más rápido
       velocidadMod = 2.2;
       this.colorCuerpo = [220, 20, 60];
     } else if (colorActual[2] > 200 && colorActual[0] < 100) {
-      // AZUL: Lo congela / ralentiza
       velocidadMod = 0.3;
       this.colorCuerpo = [40, 120, 255];
     } else if (colorActual[0] > 200 && colorActual[1] > 200) {
-      // BLANCO / AMARILLO: Lo calma
       velocidadMod = 0.7;
       this.colorCuerpo = [240, 240, 240];
     }
 
     velocidadMod *= this.personalidad.energia;
 
-    // 1.5. Reacción al MOVIMIENTO real detectado frente a la cámara
-    // (frame difference), independiente de la reacción al color: varios
-    // niveles de respuesta, tal como pide la guía del proyecto.
     let sesgoDireccionX = 0, sesgoDireccionY = 0;
     if (detectorMovimiento) {
-      // Opción 5 (Control por Movimiento): tu intensidad de movimiento real
-      // acelera o frena al personaje, sumado a lo que ya le hace el color.
-      let control = detectorMovimiento.intensidadControl(); // 0..1
+      let control = detectorMovimiento.intensidadControl();
       velocidadMod *= map(control, 0, 1, 0.85, 2.4);
 
-      // Opción 1 (Detector de Velocidad): un movimiento muy brusco frente a
-      // la cámara lo puede sobresaltar de verdad, no solo por azar.
+      // --- OPCIÓN 2: MODO COHETE POR VELOCIDAD EXTREMA ---
       if (detectorMovimiento.categoriaVelocidad === 'Rápido' &&
-          this.estado === 'vagar' && this.cooldownCambioEstado === 0 && random() < 0.3) {
-        this.vx = random(-4, 4);
-        this.vy = random(-4, 4);
+          this.estado === 'vagar' && this.cooldownCambioEstado === 0 && random() < 0.4) {
+        this.vx = random(-8, 8); // Velocidad muy alta
+        this.vy = random(-8, 8);
+        this.colorCuerpo = [255, 240, 0]; // Amarillo brillante de cohete
+        this.escalaPulso = 1.5;
+        this.frase = '¡ZAS!';
+        this.temporizadorFrase = 40;
         this._cambiarEstado('asustado');
       }
 
-      // Opción 2 (Trigger de Acción): si hace rato que no hay movimiento
-      // frente a la cámara, le gana el sueño con más facilidad.
-      if (!detectorMovimiento.activo && this.estado === 'vagar' &&
-          this.cooldownCambioEstado === 0 && random() < 0.006) {
+      // --- OPCIÓN 4: REACCIÓN NOTORIA POR INACTIVIDAD REPENTINA ---
+      if (this._estadoPrevioActivo && !detectorMovimiento.activo && this.estado === 'vagar' && this.cooldownCambioEstado === 0) {
+        this.vx = 0;
+        this.vy = 0;
+        this.escalaPulso = 0.7; // Se encoge de sorpresa
+        this.frase = '¿¡Se fue todos!?';
+        this.temporizadorFrase = 70;
         this._cambiarEstado('durmiendo');
       }
+      this._estadoPrevioActivo = detectorMovimiento.activo;
 
-      // Opción 4 (Detector de Dirección): tu movimiento predominante empuja
-      // suavemente al personaje en esa misma dirección (coordenadas ya
-      // espejadas para que coincida con lo que ves en pantalla).
-      if (detectorMovimiento.direccion === 'Izquierda') sesgoDireccionX = 0.05;
-      else if (detectorMovimiento.direccion === 'Derecha') sesgoDireccionX = -0.05;
-      else if (detectorMovimiento.direccion === 'Arriba') sesgoDireccionY = -0.05;
-      else if (detectorMovimiento.direccion === 'Abajo') sesgoDireccionY = 0.05;
+      // --- OPCIÓN 1: EFECTO "VIENTO" O CORRIENTE DE AIRE FUERTE ---
+      // Se multiplicó el sesgo drásticamente (antes era 0.05, ahora es 0.4) para que el viento mueva al personaje con fuerza
+      if (detectorMovimiento.direccion === 'Izquierda') sesgoDireccionX = 0.4;
+      else if (detectorMovimiento.direccion === 'Derecha') sesgoDireccionX = -0.4;
+      else if (detectorMovimiento.direccion === 'Arriba') sesgoDireccionY = -0.4;
+      else if (detectorMovimiento.direccion === 'Abajo') sesgoDireccionY = 0.4;
 
-      // Opción 3 (Contador de Gestos): cada gesto nuevo (ej. un "wave" de
-      // mano) le dispara una travesura inmediata, como celebrándolo.
+      // Acumulador de gestos: Requiere 5 cambios de gesto para activar la travesura
       if (detectorMovimiento.gestos !== this._ultimoConteoGestos) {
         this._ultimoConteoGestos = detectorMovimiento.gestos;
-        if (this._ultimoConteoGestos > 0) this._hacerTravesura(pintor, configUI);
+        if (this._ultimoConteoGestos > 0) {
+          this.contadorGestosParaTravesura++;
+          if (this.contadorGestosParaTravesura >= 5) {
+            this.contadorGestosParaTravesura = 0;
+            this._hacerTravesura(pintor, configUI);
+          }
+        }
       }
     }
 
-    // 2. Animaciones de "estar vivo" (siempre corren, sin importar el estado)
     this._actualizarVida();
 
     if (this.cooldownCambioEstado > 0) this.cooldownCambioEstado--;
 
-    // 2.5. Impulso creativo autónomo: tira bombas de color, cambia filtros,
-    // o hace ambas cosas, sin necesidad de encerrarlo contra un muro.
-    // No lo hace si ya está dormido o de por sí ocupado destruyendo/asustado.
     if (this.estado !== 'durmiendo' && this.estado !== 'asustado') {
       this.temporizadorTravesura--;
       if (this.temporizadorTravesura <= 0) {
         this._hacerTravesura(pintor, configUI);
-        this.temporizadorTravesura = random(140, 320) / this.personalidad.travieso;
+        this.temporizadorTravesura = random(500, 950) / this.personalidad.travieso;
       }
     }
 
-    // 3. Comportamiento según el estado actual
     if (this.estado === 'vagar') {
-      // Deambular orgánico con ruido Perlin: en vez de saltos random puros,
-      // la dirección cambia suavemente, como si "fluyera" por el lienzo.
       let t = frameCount * 0.006 * this.personalidad.energia;
       let angulo = noise(this.ruidoOffX, t) * TWO_PI * 3;
       let empuje = 0.12 * this.personalidad.energia;
       this.vx += Math.cos(angulo) * empuje;
       this.vy += Math.sin(angulo) * empuje;
-      this.vx = constrain(this.vx * 0.96, -3.5, 3.5); // fricción leve para que no se dispare
+      this.vx = constrain(this.vx * 0.96, -3.5, 3.5);
       this.vy = constrain(this.vy * 0.96, -3.5, 3.5);
 
       this.x += this.vx * velocidadMod;
       this.y += this.vy * velocidadMod;
 
-      // Empuje extra según la dirección de movimiento detectada frente a
-      // la cámara (Opción 4 de la guía: Detector de Dirección)
-      this.x += sesgoDireccionX * 20;
-      this.y += sesgoDireccionY * 20;
+      // Aplicación del viento con fuerza notable
+      this.x += sesgoDireccionX * 25;
+      this.y += sesgoDireccionY * 25;
 
-      // Rastro persistente: va dejando una huella tenue de por dónde pasó
+      // --- Estela ampliada y adaptada al color actual del cuerpo ---
       this.temporizadorRastro--;
       if (this.temporizadorRastro <= 0 && pintor && typeof pintor.dibujarTrazo === 'function') {
+        let tamanoEstela = random(25, 60);
         pintor.dibujarTrazo(width - this.x, this.y, {
-          tamano: random(6, 14),
-          color: [...this.colorCuerpo, random(20, 55)],
+          tamano: tamanoEstela,
+          color: [...this.colorCuerpo, random(50, 110)],
           tipo: 'pincel'
         });
-        this.temporizadorRastro = random(3, 9);
+        this.temporizadorRastro = random(2, 5);
       }
 
-      // Charla espontánea aunque no cambie de estado
       this._quizasHablar(this.frasesVagar, 0.002 * this.personalidad.curiosidad);
 
-      // Probabilidades aleatorias de cambiar de acción imprevistamente
       if (this.cooldownCambioEstado === 0) {
         let azar = random();
-        if (azar < 0.004) {
+        if (azar < 0.012) {
           this._cambiarEstado('mirando');
-        } else if (azar < 0.008) {
+        } else if (azar < 0.024) {
           this._cambiarEstado('vandalismo');
-        } else if (azar < 0.012) {
+        } else if (azar < 0.028) {
           this._cambiarEstado('bailando');
-        } else if (azar < 0.015) {
+        } else if (azar < 0.031) {
           this._cambiarEstado('durmiendo');
-        } else if (azar < 0.019) {
+        } else if (azar < 0.035) {
           this.teletransportarse();
         }
       }
 
     } else if (this.estado === 'mirando') {
-      // Se queda completamente quieto clavando la mirada
       this.temporizadorEstado++;
-      this.colorCuerpo = [150, 0, 255]; // Púrpura amenazante
+      this.colorCuerpo = [150, 0, 255];
       this._quizasHablar(this.frasesMirando, 0.02);
 
       if (this.temporizadorEstado > 80) {
@@ -211,23 +199,20 @@ class PersonajeGenetico {
       }
 
     } else if (this.estado === 'vandalismo') {
-      // Se vuelve loco borrando trazos tuyos por puro maltrato artístico
       this.temporizadorEstado++;
       if (pintor && typeof pintor.borrar === 'function') {
-        pintor.borrar(width - this.x, this.y, 40);
+        pintor.borrar(width - this.x, this.y, 45);
       }
-      // Se mueve erráticamente mientras destruye, no queda pegado
-      this.x += random(-4, 4) * velocidadMod;
-      this.y += random(-4, 4) * velocidadMod;
+      this.x += random(-5, 5) * velocidadMod;
+      this.y += random(-5, 5) * velocidadMod;
       this.colorCuerpo = [0, 0, 0];
       this._quizasHablar(this.frasesVandalismo, 0.04);
 
-      if (this.temporizadorEstado > 60) {
+      if (this.temporizadorEstado > 120) {
         this._cambiarEstado('vagar');
       }
 
     } else if (this.estado === 'bailando') {
-      // Da vueltas felizmente en su lugar, sin dañar nada
       this.temporizadorEstado++;
       let radio = 3 + Math.sin(frameCount * 0.2) * 2;
       this.x += Math.cos(frameCount * 0.3) * radio * 0.3;
@@ -241,7 +226,6 @@ class PersonajeGenetico {
       }
 
     } else if (this.estado === 'durmiendo') {
-      // Se queda inmóvil "roncando" y de repente despierta de un salto
       this.temporizadorEstado++;
       this.vx *= 0.9;
       this.vy *= 0.9;
@@ -249,14 +233,12 @@ class PersonajeGenetico {
       this._quizasHablar(this.frasesDormido, 0.03);
 
       if (this.temporizadorEstado > 90 || random() < 0.01) {
-        // Se despierta sobresaltado
         this.vx = random(-4, 4);
         this.vy = random(-4, 4);
         this._cambiarEstado('asustado');
       }
 
     } else if (this.estado === 'asustado') {
-      // Salto de sobresalto breve, luego sigue con su vida
       this.temporizadorEstado++;
       this.x += this.vx * 2.5;
       this.y += this.vy * 2.5;
@@ -268,7 +250,6 @@ class PersonajeGenetico {
       }
     }
 
-    // 4. Colisiones con los bordes de la pantalla
     if (this.x < 30 || this.x > width - 30) {
       this.vx *= -1;
       this.x = constrain(this.x, 30, width - 30);
@@ -278,42 +259,45 @@ class PersonajeGenetico {
       this.y = constrain(this.y, 30, height - 30);
     }
 
-    // 5. Detección de Muros (Negro del usuario) para encerrarlo
+    // --- VERIFICACIÓN DE MUROS (ZONAS NEGRAS) ---
     if (pintor && pintor.lienzo) {
-      pintor.lienzo.loadPixels();
-      let idxX = Math.floor(this.x);
-      let idxY = Math.floor(this.y);
-      let index = (idxY * width + idxX) * 4;
+      let idxX = Math.floor(constrain(this.x, 0, pintor.lienzo.width - 1));
+      let idxY = Math.floor(constrain(this.y, 0, pintor.lienzo.height - 1));
+      
+      let escalaX = pintor.lienzo.width / width;
+      let escalaY = pintor.lienzo.height / height;
+      let pX = Math.floor(idxX * escalaX);
+      let pY = Math.floor(idxY * escalaY);
 
-      if (pintor.lienzo.pixels.length > 0 && index > 0 && index < pintor.lienzo.pixels.length) {
+      let index = (pY * pintor.lienzo.width + pX) * 4;
+      
+      pintor.lienzo.loadPixels();
+      if (pintor.lienzo.pixels.length > 0 && index >= 0 && index < pintor.lienzo.pixels.length) {
         let r = pintor.lienzo.pixels[index];
         let g = pintor.lienzo.pixels[index + 1];
         let b = pintor.lienzo.pixels[index + 2];
         let a = pintor.lienzo.pixels[index + 3];
 
-        if (a > 100 && r < 40 && g < 40 && b < 40) {
-          this.vx *= -1;
-          this.vy *= -1;
+        if (a > 100 && r < 50 && g < 50 && b < 50) {
+          this.vx *= -0.5;
+          this.vy *= -0.5;
           this.tiempoAtrapado++;
 
-          // La terquedad de su personalidad decide cuánto aguanta encerrado
-          let limitePaciencia = 100 * this.personalidad.terquedad;
+          let limitePaciencia = 60 * this.personalidad.terquedad;
           if (this.tiempoAtrapado > limitePaciencia) {
             this.detonarBomba(pintor, configUI);
             this.tiempoAtrapado = 0;
           }
         } else {
-          this.tiempoAtrapado = max(0, this.tiempoAtrapado - 0.2);
+          this.tiempoAtrapado = max(0, this.tiempoAtrapado - 0.5);
         }
       }
     }
   }
 
-  // --- Animaciones de vida: parpadeo, bamboleo, respiración ---
   _actualizarVida() {
     this.anguloBamboleo += 0.06;
 
-    // Parpadeo aleatorio
     this.temporizadorParpadeo--;
     if (this.temporizadorParpadeo <= 0) {
       this.parpadeando = true;
@@ -323,15 +307,12 @@ class PersonajeGenetico {
       }
     }
 
-    // Pulso de escala vuelve suavemente a 1 (para el salto de susto, etc.)
     this.escalaPulso = lerp(this.escalaPulso, 1, 0.1);
 
-    // Rotación vuelve a 0 cuando no está bailando
     if (this.estado !== 'bailando') {
       this.rotacionActual = lerp(this.rotacionActual, 0, 0.1);
     }
 
-    // La burbuja de diálogo se apaga sola
     if (this.temporizadorFrase > 0) {
       this.temporizadorFrase--;
       if (this.temporizadorFrase <= 0) this.frase = null;
@@ -348,45 +329,33 @@ class PersonajeGenetico {
   _cambiarEstado(nuevoEstado) {
     this.estado = nuevoEstado;
     this.temporizadorEstado = 0;
-    this.cooldownCambioEstado = 20; // evita cambios frenéticos entre estados
+    this.cooldownCambioEstado = 20;
   }
 
   teletransportarse() {
-    // Un capricho random: desaparece y reaparece en otro lado, con chispas
     this.x = random(40, width - 40);
     this.y = random(40, height - 40);
     this.escalaPulso = 1.6;
   }
 
-  // --- Interacción entre varios personajes (para arte generativo tipo "ecosistema") ---
-  // Si tu sketch crea un array de PersonajeGenetico, llamá a este método para
-  // cada par (por ejemplo con un doble for) en cada frame:
-  //   for (let i = 0; i < personajes.length; i++) {
-  //     for (let j = i + 1; j < personajes.length; j++) {
-  //       personajes[i].interactuarCon(personajes[j], pintor);
-  //     }
-  //   }
   distanciaA(otro) {
     return Math.hypot(this.x - otro.x, this.y - otro.y);
   }
 
   interactuarCon(otro, pintor) {
     let d = this.distanciaA(otro);
-    if (d > 70) return; // muy lejos, no pasa nada
+    if (d > 70) return;
 
-    // Rebote suave: se "empujan" al cruzarse, como partículas
     let ang = Math.atan2(this.y - otro.y, this.x - otro.x);
     let fuerza = 0.15;
     this.vx += Math.cos(ang) * fuerza;
     this.vy += Math.sin(ang) * fuerza;
 
-    // Ocasionalmente "contagian" su tono de color al otro, mezclando estilos
     if (random() < 0.01) {
       this.tonoBase = lerp(this.tonoBase, otro.tonoBase, 0.5);
       this._quizasHablar(['¡contagio de color!', 'toma un poco del mío', '¡mezcla!'], 1);
     }
 
-    // Muy cerca y con suerte, sueltan una bomba conjunta justo entre los dos
     if (d < 30 && random() < 0.02 && pintor) {
       let mx = (width - this.x + width - otro.x) / 2;
       let my = (this.y + otro.y) / 2;
@@ -398,53 +367,41 @@ class PersonajeGenetico {
     }
   }
 
-  // Decide, al azar, qué travesura hacer: bomba de color, cambio de filtro,
-  // una ráfaga de varias bombas por todo el lienzo, o combo de ambas.
   _hacerTravesura(pintor, configUI) {
     let opcion = random();
-    if (opcion < 0.40) {
+    if (opcion < 0.65) {
       this.detonarBombaColor(pintor);
-      this._quizasHablar(this.frasesTravesura, 1); // siempre comenta lo que hizo
-    } else if (opcion < 0.70) {
-      this.provocarCambioCaotico(configUI);
       this._quizasHablar(this.frasesTravesura, 1);
-    } else if (opcion < 0.90) {
+    } else if (opcion < 0.85) {
       this.dispararRafagaBombas(pintor);
       this._quizasHablar(this.frasesTravesura, 1);
     } else {
-      // Combo dramático: bomba de color Y cambio de filtro a la vez
+      if (random() < 0.2) {
+        this.provocarCambioCaotico(configUI);
+      }
       this.detonarBombaColor(pintor);
-      this.provocarCambioCaotico(configUI);
       this._quizasHablar(this.frasesTravesura, 1);
     }
-    this.escalaPulso = 1.25; // un pequeño saltito de emoción al hacer la travesura
+    this.escalaPulso = 1.25;
   }
 
   provocarCambioCaotico(configUI) {
     if (configUI && 'filtro' in configUI) {
-      // Cambio de filtro permanente: se queda así hasta la próxima travesura,
-      // no vuelve solo a la normalidad.
       configUI.filtro = random(this.filtrosDisponibles);
     }
   }
 
-  // Tamaños de "bolita" de pincel: mediano, grande o extragrande (nunca chiquito)
   _tamanoBolita() {
     let categoria = random(['mediano', 'grande', 'extragrande']);
     if (categoria === 'mediano') return random(30, 45);
     if (categoria === 'grande') return random(46, 65);
-    return random(66, 90); // extragrande
+    return random(66, 90);
   }
 
-  // Decide el "modo de color" de una bomba entera antes de tirarla:
-  // - multicolor: varios colores, pero armónicos entre sí (no cualquier RGB)
-  // - monocromatico: un único color base, variando solo la opacidad
   _elegirModoColor() {
     return random() < 0.5 ? 'multicolor' : 'monocromatico';
   }
 
-  // Convierte HSB (0-360, 0-100, 0-100) a RGB (0-255) sin tocar el
-  // colorMode global de p5, para no afectar el resto del sketch.
   _hsbToRgb(h, s, b) {
     s /= 100; b /= 100;
     let k = n => (n + h / 60) % 6;
@@ -452,8 +409,6 @@ class PersonajeGenetico {
     return [Math.round(f(5) * 255), Math.round(f(3) * 255), Math.round(f(1) * 255)];
   }
 
-  // Genera una paleta de colores armónica a partir del tono propio del
-  // personaje (this.tonoBase) y su tipo de armonía (analoga/complementaria/triada).
   _paletaArmonica() {
     let h = this.tonoBase;
     if (this.tipoArmonia === 'complementaria') {
@@ -461,26 +416,20 @@ class PersonajeGenetico {
     } else if (this.tipoArmonia === 'triada') {
       return [h, (h + 120) % 360, (h + 240) % 360];
     }
-    // análoga: tonos vecinos
     return [h, (h + 30) % 360, (h - 30 + 360) % 360];
   }
 
-  // Genera el color de una bolita según el modo elegido para esa bomba.
-  // colorBase se usa solo en modo monocromático.
   _colorParaTrazo(modoColor, colorBase) {
     if (modoColor === 'monocromatico') {
-      let opacidad = random(60, 255); // opacidad bien variable, de sutil a sólida
+      let opacidad = random(60, 255);
       return [colorBase[0], colorBase[1], colorBase[2], opacidad];
     }
-    // multicolor: elige un tono de la paleta armónica del personaje,
-    // variando saturación/brillo para que no sea siempre el mismo golpe de color
     let paleta = this._paletaArmonica();
     let tono = random(paleta);
     let rgb = this._hsbToRgb(tono, random(55, 100), random(70, 100));
     return [...rgb, random(180, 255)];
   }
 
-  // Dibuja un trazo y, según this.simetria, sus reflejos — como un kaleidoscopio.
   _dibujarConSimetria(pintor, px, py, opts) {
     pintor.dibujarTrazo(px, py, opts);
     if (this.simetria === 'ninguna') return;
@@ -511,18 +460,15 @@ class PersonajeGenetico {
       for (let i = 0; i < cantidad; i++) {
         let px, py;
         if (patron === 'anillo') {
-          // Los trazos salen distribuidos en círculo, como una explosión de confeti
           let ang = (TWO_PI / cantidad) * i + random(-0.2, 0.2);
           let r = random(20, 60);
           px = cx + Math.cos(ang) * r;
           py = cy + Math.sin(ang) * r;
         } else if (patron === 'linea') {
-          // Una ráfaga en línea, como si disparara una metralleta de color
           let ang = random(TWO_PI);
           px = cx + Math.cos(ang) * (i * 8);
           py = cy + Math.sin(ang) * (i * 8);
         } else {
-          // Salpicadura desordenada (pero con pincel, no spray)
           px = cx + random(-50, 50);
           py = cy + random(-50, 50);
         }
@@ -536,8 +482,6 @@ class PersonajeGenetico {
     }
   }
 
-  // Un ataque de creatividad total: bombas de color repartidas por TODO
-  // el lienzo, no solo cerca del personaje. Reservado para momentos raros.
   dispararRafagaBombas(pintor) {
     if (pintor && typeof pintor.dibujarTrazo === 'function') {
       let cantidad = this.personalidad.dramatico ? 10 : 6;
@@ -558,7 +502,7 @@ class PersonajeGenetico {
     if (pintor && typeof pintor.borrar === 'function') {
       pintor.borrar(width - this.x, this.y, 300);
     }
-    if (configUI && 'filtro' in configUI) {
+    if (configUI && 'filtro' in configUI && random() < 0.2) {
       configUI.filtro = random(this.filtrosDisponibles);
     }
     this.vx = random(-4, 4);
@@ -573,7 +517,6 @@ class PersonajeGenetico {
     ctx.rotate(this.rotacionActual + Math.sin(this.anguloBamboleo) * 0.02);
     ctx.scale(this.escalaPulso);
 
-    // Cuerpo Rectangular (con una pequeña "respiración")
     let respirar = this.estado === 'durmiendo' ? Math.sin(frameCount * 0.08) * 2 : Math.sin(this.anguloBamboleo) * 1;
     ctx.stroke(255);
     ctx.strokeWeight(2);
@@ -581,7 +524,6 @@ class PersonajeGenetico {
     ctx.rectMode(CENTER);
     ctx.rect(0, 0, this.wRect, this.hRect + respirar, 8);
 
-    // Ojos
     ctx.noStroke();
     ctx.fill(255);
     let altoOjo = this.parpadeando ? 2 : 12;
@@ -594,14 +536,12 @@ class PersonajeGenetico {
         ctx.ellipse(-10, -4, 8, 8);
         ctx.ellipse(10, -4, 8, 8);
       } else if (this.estado === 'durmiendo') {
-        // ojos cerrados en arquito
         ctx.stroke(0);
         ctx.strokeWeight(2);
         ctx.line(-14, -4, -6, -4);
         ctx.line(6, -4, 14, -4);
         ctx.noStroke();
       } else if (this.estado === 'asustado') {
-        // ojos bien abiertos y grandes
         ctx.fill(0);
         ctx.ellipse(-10, -4, 9, 9);
         ctx.ellipse(10, -4, 9, 9);
@@ -613,7 +553,6 @@ class PersonajeGenetico {
       }
     }
 
-    // Burbuja de diálogo espontánea
     if (this.frase) {
       ctx.fill(255);
       ctx.stroke(0);

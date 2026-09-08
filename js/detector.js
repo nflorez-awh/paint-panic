@@ -1,13 +1,9 @@
-// Detecta tres colores en un único recorrido de la imagen de la cámara:
-// Cada color tiene su propio umbral mínimo de píxeles para considerarse "detectado",
-
 class DetectorMultiColor {
   constructor() {
     this.pincel   = { x: 0, y: 0, detectado: false, contador: 0 };
     this.selector = { x: 0, y: 0, detectado: false, contador: 0 };
     this.borrador = { x: 0, y: 0, detectado: false, contador: 0 };
 
-    // Umbrales de píxeles mínimos para confirmar detección de cada color.
     this.umbralPincel = 800;
     this.umbralSelector = 500;
     this.umbralBorrador = 800;
@@ -16,9 +12,9 @@ class DetectorMultiColor {
   analizar(video) {
     video.loadPixels();
 
-    let cV = 0, sxV = 0, syV = 0; // verde
-    let cA = 0, sxA = 0, syA = 0; // azul
-    let cR = 0, sxR = 0, syR = 0; // rojo
+    let cV = 0, sxV = 0, syV = 0;
+    let cA = 0, sxA = 0, syA = 0;
+    let cR = 0, sxR = 0, syR = 0;
 
     if (video.pixels.length > 0) {
       for (let y = 0; y < video.height; y++) {
@@ -55,17 +51,14 @@ class DetectorMultiColor {
     }
   }
 
-  // Verde: canal G claramente por encima de R y B
   _esVerde(r, g, b) {
     return g > r + 30 && g > b + 30;
   }
 
-  // Azul: canal B claramente por encima de R y G
   _esAzul(r, g, b) {
     return b > r + 30 && b > g + 30;
   }
 
-  // Rojo: R alto, G y B bajos y parecidos entre sí
   _esRojo(r, g, b) {
     return r > 150 && g < 90 && b < 90 && r > g + 60 && r > b + 60;
   }

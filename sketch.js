@@ -2,20 +2,19 @@ let camara, detector, detectorMovimiento, pintor, escena, menu;
 let debugMode = true;
 let personaje;
 
-// Estado configurable desde la UI (lo van modificando las opciones del menú)
 let configUI = {
   pincelTipo: 'redondo',
   pincelTamano: 20,
-  pincelColor: [0, 255, 0],
-  filtro: 'ninguno',        // ninguno | gris | invertir | blur | posterizar
-  fondoModo: 'camara',      // camara | color
+  pincelColor: [0, 0, 0], 
+  filtro: 'ninguno',       
+  fondoModo: 'camara',      
   fondoColor: [20, 30, 90],
+  modoDebugVisual: 'ambos', 
 };
 
-let menuTree; // se arma en setup(), porque usa color() y necesita que p5 ya esté listo
+let menuTree; 
 
 function setup() {
-  // Canvas interno de 800x600 (proporción 4:3)
   createCanvas(800, 600);
   smooth();
 
@@ -25,50 +24,93 @@ function setup() {
   detector = new DetectorMultiColor();
   detectorMovimiento = new DetectorMovimiento(800, 600);
   pintor = new Pintor(800, 600);
-  escena = createGraphics(800, 600); // buffer donde componemos fondo + trazos antes de mostrar
+  escena = createGraphics(800, 600);
 
   menuTree = construirMenuTree();
   menu = new MenuManager(menuTree, configUI);
   personaje = new PersonajeGenetico(800, 600);
-
 }
 
 function draw() {
   background(0);
 
-  // Analizar los tres colores (pincel, selector, borrador)
   detector.analizar(camara.video);
-
-  // Analizar movimiento por Frame Difference
   detectorMovimiento.analizar(camara.video);
 
-  // Arma la escena
-  escena.clear();
-  if (configUI.fondoModo === 'camara') {
-    camara.mostrar(escena);
+  // --- GESTIÓN DE MODOS DEBUG VISUALES (CON CÁMARA VOLTEADA) ---
+  if (configUI.modoDebugVisual === 'color') {
+    push();
+    translate(width, 0);
+    scale(-1, 1); // Voltea la cámara horizontalmente sí o sí
+    image(camara.video, 0, 0, width, height);
+    pintarMascaraColorInvertida();
+    pop();
+    
+  } else if (configUI.modoDebugVisual === 'movimiento') {
+    push();
+    translate(width, 0);
+    scale(-1, 1); // Voltea el movimiento de la cámara sí o sí
+    image(detectorMovimiento.bufferActual, 0, 0, width, height);
+    pop();
+    
+  } else if (configUI.modoDebugVisual === 'dividido') {
+    // Mitad Izquierda: Color Debug Volteado
+    push();
+    imageMode(CORNER);
+    // Dibujamos la mitad izquierda con espejo
+    drawingContext.save();
+    drawingContext.beginPath();
+    drawingContext.rect(0, 0, width / 2, height);
+    drawingContext.clip();
+    
+    translate(width, 0);
+    scale(-1, 1);
+    image(camara.video, 0, 0, width, height);
+    pintarMascaraColorInvertida();
+    drawingContext.restore();
+    pop();
+
+    // Mitad Derecha: Movimiento Volteado
+    push();
+    drawingContext.save();
+    drawingContext.beginPath();
+    drawingContext.rect(width / 2, 0, width / 2, height);
+    drawingContext.clip();
+
+    translate(width, 0);
+    scale(-1, 1);
+    image(detectorMovimiento.bufferActual, 0, 0, width, height);
+    drawingContext.restore();
+    pop();
+
+    // Línea divisoria central
+    stroke(255);
+    strokeWeight(4);
+    line(width / 2, 0, width / 2, height);
+
   } else {
-    escena.background(...configUI.fondoColor);
+    // MODO AMBOS / NORMAL
+    escena.clear();
+    if (configUI.fondoModo === 'camara') {
+      camara.mostrar(escena);
+    } else {
+      escena.background(...configUI.fondoColor);
+    }
+    pintor.mostrar(escena);
+    aplicarFiltro(escena, configUI.filtro);
+
+    image(escena, 0, 0, width, height);
+
+    if (personaje) {
+      personaje.actualizar(pintor, detectorMovimiento, configUI);
+      personaje.mostrar();
+    }
   }
-  pintor.mostrar(escena);
-  aplicarFiltro(escena, configUI.filtro);
 
-  image(escena, 0, 0, width, height);
-
-  // Personaje
-  if (personaje) {
-    // Se le pasa el detector de MOVIMIENTO  para que
-    // reaccione en tiempo real a lo que hacés frente a la cámara, y
-    // configUI para que sus travesuras (bombas, filtros) puedan actuar.
-    personaje.actualizar(pintor, detectorMovimiento, configUI);
-    personaje.mostrar(); // Al no pasarle 'escena', se dibuja directamente en la pantalla principal
-  }
-
-  // Coordenadas espejadas de cada rol, para que coincidan con lo que se ve en pantalla
   let pincelX = width - detector.pincel.x,   pincelY = detector.pincel.y;
   let selX    = width - detector.selector.x, selY    = detector.selector.y;
   let borrX   = width - detector.borrador.x, borrY   = detector.borrador.y;
 
-  // 4. VERDE -> Pincel: pinta en el lienzo con el tipo/tamaño/color elegidos en la UI
   if (detector.pincel.detectado) {
     pintor.dibujarTrazo(detector.pincel.x, detector.pincel.y, {
       tamano: configUI.pincelTamano,
@@ -77,25 +119,51 @@ function draw() {
     });
   }
 
-  // 5. ROJO -> Borrador: borra en el lienzo
   if (detector.borrador.detectado) {
     pintor.borrar(detector.borrador.x, detector.borrador.y);
   }
 
-  // 6. AZUL -> Selector: navega el menú (categorías y submenús)
   menu.actualizar(detector.selector.detectado, selX, selY);
   menu.mostrar();
 
-  // 7. Cursores visuales: dan feedback de dónde está actuando cada color
   dibujarCursores(pincelX, pincelY, selX, selY, borrX, borrY);
 
-  // 8. Panel de Debug
   if (debugMode) {
     dibujarDebug();
   }
 }
 
-// FILTROS
+// Función auxiliar de máscara con coordenadas adaptadas al scale(-1, 1)
+function pintarMascaraColorInvertida() {
+  camara.video.loadPixels();
+  if (camara.video.pixels.length > 0) {
+    noStroke();
+    let salto = 10;
+    for (let y = 0; y < camara.video.height; y += salto) {
+      for (let x = 0; x < camara.video.width; x += salto) {
+        let i = (y * camara.video.width + x) * 4;
+        let r = camara.video.pixels[i];
+        let g = camara.video.pixels[i + 1];
+        let b = camara.video.pixels[i + 2];
+
+        let xReal = x * (width / camara.video.width);
+        let yReal = y * (height / camara.video.height);
+
+        if (detector._esVerde(r, g, b)) {
+          fill(0, 255, 0, 200);
+          ellipse(xReal, yReal, 8, 8);
+        } else if (detector._esAzul(r, g, b)) {
+          fill(0, 100, 255, 200);
+          ellipse(xReal, yReal, 8, 8);
+        } else if (detector._esRojo(r, g, b)) {
+          fill(255, 0, 0, 200);
+          ellipse(xReal, yReal, 8, 8);
+        }
+      }
+    }
+  }
+}
+
 function aplicarFiltro(pg, tipo) {
   switch (tipo) {
     case 'gris':       pg.filter(GRAY); break;
@@ -103,12 +171,10 @@ function aplicarFiltro(pg, tipo) {
     case 'blur':       pg.filter(BLUR, 3); break;
     case 'posterizar': pg.filter(POSTERIZE, 3); break;
     case 'ninguno':
-    default:
-      break;
+    default: break;
   }
 }
 
-// ÁRBOL DE CATEGORÍAS
 function construirMenuTree() {
   return {
     id: 'root',
@@ -135,7 +201,7 @@ function construirMenuTree() {
           {
             id: 'color', label: 'Color', color: color(90),
             children: [
-              { id: 'negro', label: 'Negro', color: color(40, 40, 40), accion: c => c.pincelColor = [10, 10, 10] }, // <-- ¡Añadido aquí!
+              { id: 'negro', label: 'Negro', color: color(40, 40, 40), accion: c => c.pincelColor = [0, 0, 0] },
               { id: 'rojo', label: 'Rojo', color: color(220, 40, 40), accion: c => c.pincelColor = [220, 40, 40] },
               { id: 'naranja', label: 'Naranja', color: color(255, 140, 0), accion: c => c.pincelColor = [255, 140, 0] },
               { id: 'amarillo', label: 'Amarillo', color: color(230, 220, 30), accion: c => c.pincelColor = [230, 220, 30] },
@@ -172,9 +238,6 @@ function construirMenuTree() {
         ],
       },
       {
-        // Calibración del detector de MOVIMIENTO (frame difference): a qué
-        // tan sensible es a cambios de píxel, y cuánta proporción del frame
-        // tiene que cambiar para considerar que "hay movimiento".
         id: 'movimiento', label: 'Movimiento', color: color(255, 120, 40),
         children: [
           {
@@ -193,6 +256,15 @@ function construirMenuTree() {
               { id: 'umb_alto', label: 'Alto', color: color(210), accion: () => detectorMovimiento.thresholdActivo = 0.05 },
             ],
           },
+        ],
+      },
+      {
+        id: 'debugVisual', label: 'Modo Debug', color: color(120, 120, 120),
+        children: [
+          { id: 'db_ambos', label: 'Ambos (Normal)', color: color(210), accion: c => c.modoDebugVisual = 'ambos' },
+          { id: 'db_color', label: 'Solo Color', color: color(40, 200, 60), accion: c => c.modoDebugVisual = 'color' },
+          { id: 'db_mov', label: 'Solo Movimiento', color: color(255, 120, 40), accion: c => c.modoDebugVisual = 'movimiento' },
+          { id: 'db_dividido', label: 'Pantalla Dividida', color: color(150, 50, 220), accion: c => c.modoDebugVisual = 'dividido' },
         ],
       },
     ],
@@ -224,7 +296,7 @@ function dibujarCursores(pincelX, pincelY, selX, selY, borrX, borrY) {
 function dibujarDebug() {
   fill(0, 180);
   noStroke();
-  rect(15, 15, 300, 210, 8);
+  rect(15, 15, 300, 225, 8);
 
   fill(0, 255, 150);
   textSize(14);
@@ -239,27 +311,18 @@ function dibujarDebug() {
   text(`Pincel: ${configUI.pincelTipo} / ${configUI.pincelTamano}px`, 25, 118);
   text(`Filtro: ${configUI.filtro} | Fondo: ${configUI.fondoModo}`, 25, 136);
 
-  // --- Detección de movimiento (frame difference) ---
   fill(255, 170, 60);
   text(`--- Movimiento (frame difference) ---`, 25, 158);
   fill(255);
-  // La dirección se espeja para mostrar, porque el video en pantalla está
-  // espejado (ver Camara.mostrar) pero el análisis se hace sobre el frame crudo.
   let dirCruda = detectorMovimiento.direccion;
   let dirMostrada = dirCruda === 'Izquierda' ? 'Derecha' : dirCruda === 'Derecha' ? 'Izquierda' : dirCruda;
   text(`Velocidad: ${detectorMovimiento.categoriaVelocidad} | Activo: ${detectorMovimiento.activo}`, 25, 176);
   text(`Dirección: ${dirMostrada} | Gestos: ${detectorMovimiento.gestos}`, 25, 194);
-  text(`Sensibilidad: ${detectorMovimiento.sensibilidad} | Umbral: ${detectorMovimiento.thresholdActivo.toFixed(2)}`, 25, 212);
+  text(`Debug Visual: ${configUI.modoDebugVisual}`, 25, 212);
 }
 
 function keyPressed() {
-  if (key === 'd' || key === 'D') {
-    debugMode = !debugMode;
-  }
-  if (key === 'c' || key === 'C') {
-    pintor.limpiar();
-  }
-  if (key === 'g' || key === 'G') {
-    detectorMovimiento.reiniciarGestos();
-  }
+  if (key === 'd' || key === 'D') debugMode = !debugMode;
+  if (key === 'c' || key === 'C') pintor.limpiar();
+  if (key === 'g' || key === 'G') detectorMovimiento.reiniciarGestos();
 }
