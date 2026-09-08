@@ -64,9 +64,13 @@ class PersonajeGenetico {
 
     // Cooldown para que no cambie de estado todo el tiempo
     this.cooldownCambioEstado = 0;
+
+    // Último conteo de gestos visto (para detectar cuando sube el contador
+    // del detector de movimiento y reaccionar una sola vez por gesto)
+    this._ultimoConteoGestos = 0;
   }
 
-  actualizar(pintor, detector, configUI) {
+  actualizar(pintor, detectorMovimiento, configUI) {
     // 1. Detección del color que está usando el usuario (Alquimia de Colores)
     let colorActual = configUI && configUI.pincelColor ? configUI.pincelColor : [0, 255, 0];
     let velocidadMod = 1;
@@ -86,6 +90,48 @@ class PersonajeGenetico {
     }
 
     velocidadMod *= this.personalidad.energia;
+
+    // 1.5. Reacción al MOVIMIENTO real detectado frente a la cámara
+    // (frame difference), independiente de la reacción al color: varios
+    // niveles de respuesta, tal como pide la guía del proyecto.
+    let sesgoDireccionX = 0, sesgoDireccionY = 0;
+    if (detectorMovimiento) {
+      // Opción 5 (Control por Movimiento): tu intensidad de movimiento real
+      // acelera o frena al personaje, sumado a lo que ya le hace el color.
+      let control = detectorMovimiento.intensidadControl(); // 0..1
+      velocidadMod *= map(control, 0, 1, 0.85, 2.4);
+
+      // Opción 1 (Detector de Velocidad): un movimiento muy brusco frente a
+      // la cámara lo puede sobresaltar de verdad, no solo por azar.
+      if (detectorMovimiento.categoriaVelocidad === 'Rápido' &&
+          this.estado === 'vagar' && this.cooldownCambioEstado === 0 && random() < 0.3) {
+        this.vx = random(-4, 4);
+        this.vy = random(-4, 4);
+        this._cambiarEstado('asustado');
+      }
+
+      // Opción 2 (Trigger de Acción): si hace rato que no hay movimiento
+      // frente a la cámara, le gana el sueño con más facilidad.
+      if (!detectorMovimiento.activo && this.estado === 'vagar' &&
+          this.cooldownCambioEstado === 0 && random() < 0.006) {
+        this._cambiarEstado('durmiendo');
+      }
+
+      // Opción 4 (Detector de Dirección): tu movimiento predominante empuja
+      // suavemente al personaje en esa misma dirección (coordenadas ya
+      // espejadas para que coincida con lo que ves en pantalla).
+      if (detectorMovimiento.direccion === 'Izquierda') sesgoDireccionX = 0.05;
+      else if (detectorMovimiento.direccion === 'Derecha') sesgoDireccionX = -0.05;
+      else if (detectorMovimiento.direccion === 'Arriba') sesgoDireccionY = -0.05;
+      else if (detectorMovimiento.direccion === 'Abajo') sesgoDireccionY = 0.05;
+
+      // Opción 3 (Contador de Gestos): cada gesto nuevo (ej. un "wave" de
+      // mano) le dispara una travesura inmediata, como celebrándolo.
+      if (detectorMovimiento.gestos !== this._ultimoConteoGestos) {
+        this._ultimoConteoGestos = detectorMovimiento.gestos;
+        if (this._ultimoConteoGestos > 0) this._hacerTravesura(pintor, configUI);
+      }
+    }
 
     // 2. Animaciones de "estar vivo" (siempre corren, sin importar el estado)
     this._actualizarVida();
@@ -117,6 +163,11 @@ class PersonajeGenetico {
 
       this.x += this.vx * velocidadMod;
       this.y += this.vy * velocidadMod;
+
+      // Empuje extra según la dirección de movimiento detectada frente a
+      // la cámara (Opción 4 de la guía: Detector de Dirección)
+      this.x += sesgoDireccionX * 20;
+      this.y += sesgoDireccionY * 20;
 
       // Rastro persistente: va dejando una huella tenue de por dónde pasó
       this.temporizadorRastro--;

@@ -1,4 +1,4 @@
-let camara, detector, pintor, escena, menu;
+let camara, detector, detectorMovimiento, pintor, escena, menu;
 let debugMode = true;
 let personaje;
 
@@ -23,12 +23,14 @@ function setup() {
   camara.iniciar();
 
   detector = new DetectorMultiColor();
+  detectorMovimiento = new DetectorMovimiento(800, 600);
   pintor = new Pintor(800, 600);
   escena = createGraphics(800, 600); // buffer donde componemos fondo + trazos antes de mostrar
 
   menuTree = construirMenuTree();
   menu = new MenuManager(menuTree, configUI);
   personaje = new PersonajeGenetico(800, 600);
+
 }
 
 function draw() {
@@ -36,6 +38,10 @@ function draw() {
 
   // 1. Analizar los tres colores en un solo pase (pincel, selector, borrador)
   detector.analizar(camara.video);
+
+  // 1.b Analizar MOVIMIENTO real por frame difference (requisito técnico
+  // central del proyecto): compara este frame contra el anterior.
+  detectorMovimiento.analizar(camara.video);
 
   // 2. Armar la escena (fondo + trazos) en un buffer aparte
   escena.clear();
@@ -51,9 +57,10 @@ function draw() {
   image(escena, 0, 0, width, height);
 // --- Actualizar y mostrar al personaje en el canvas principal ---
   if (personaje) {
-    // Se le pasa configUI para que sus travesuras (bombas, cambios de filtro)
-    // puedan leer y modificar el estado real de la UI.
-    personaje.actualizar(pintor, detector, configUI);
+    // Se le pasa el detector de MOVIMIENTO (no el de color) para que
+    // reaccione en tiempo real a lo que hacés frente a la cámara, y
+    // configUI para que sus travesuras (bombas, filtros) puedan actuar.
+    personaje.actualizar(pintor, detectorMovimiento, configUI);
     personaje.mostrar(); // Al no pasarle 'escena', se dibuja directamente en la pantalla principal
   }
 
@@ -166,6 +173,30 @@ function construirMenuTree() {
           },
         ],
       },
+      {
+        // Calibración del detector de MOVIMIENTO (frame difference): a qué
+        // tan sensible es a cambios de píxel, y cuánta proporción del frame
+        // tiene que cambiar para considerar que "hay movimiento".
+        id: 'movimiento', label: 'Movimiento', color: color(255, 120, 40),
+        children: [
+          {
+            id: 'sensibilidad', label: 'Sensibilidad', color: color(90),
+            children: [
+              { id: 'sens_alta', label: 'Alta', color: color(210), accion: () => detectorMovimiento.sensibilidad = 12 },
+              { id: 'sens_media', label: 'Media', color: color(210), accion: () => detectorMovimiento.sensibilidad = 25 },
+              { id: 'sens_baja', label: 'Baja', color: color(210), accion: () => detectorMovimiento.sensibilidad = 45 },
+            ],
+          },
+          {
+            id: 'umbral', label: 'Umbral', color: color(90),
+            children: [
+              { id: 'umb_bajo', label: 'Bajo', color: color(210), accion: () => detectorMovimiento.thresholdActivo = 0.01 },
+              { id: 'umb_medio', label: 'Medio', color: color(210), accion: () => detectorMovimiento.thresholdActivo = 0.02 },
+              { id: 'umb_alto', label: 'Alto', color: color(210), accion: () => detectorMovimiento.thresholdActivo = 0.05 },
+            ],
+          },
+        ],
+      },
     ],
   };
 }
@@ -195,7 +226,7 @@ function dibujarCursores(pincelX, pincelY, selX, selY, borrX, borrY) {
 function dibujarDebug() {
   fill(0, 180);
   noStroke();
-  rect(15, 15, 280, 150, 8);
+  rect(15, 15, 300, 210, 8);
 
   fill(0, 255, 150);
   textSize(14);
@@ -209,6 +240,18 @@ function dibujarDebug() {
   text(`Borrador (rojo): ${detector.borrador.contador}`, 25, 98);
   text(`Pincel: ${configUI.pincelTipo} / ${configUI.pincelTamano}px`, 25, 118);
   text(`Filtro: ${configUI.filtro} | Fondo: ${configUI.fondoModo}`, 25, 136);
+
+  // --- Detección de movimiento (frame difference) ---
+  fill(255, 170, 60);
+  text(`--- Movimiento (frame difference) ---`, 25, 158);
+  fill(255);
+  // La dirección se espeja para mostrar, porque el video en pantalla está
+  // espejado (ver Camara.mostrar) pero el análisis se hace sobre el frame crudo.
+  let dirCruda = detectorMovimiento.direccion;
+  let dirMostrada = dirCruda === 'Izquierda' ? 'Derecha' : dirCruda === 'Derecha' ? 'Izquierda' : dirCruda;
+  text(`Velocidad: ${detectorMovimiento.categoriaVelocidad} | Activo: ${detectorMovimiento.activo}`, 25, 176);
+  text(`Dirección: ${dirMostrada} | Gestos: ${detectorMovimiento.gestos}`, 25, 194);
+  text(`Sensibilidad: ${detectorMovimiento.sensibilidad} | Umbral: ${detectorMovimiento.thresholdActivo.toFixed(2)}`, 25, 212);
 }
 
 function keyPressed() {
@@ -217,5 +260,8 @@ function keyPressed() {
   }
   if (key === 'c' || key === 'C') {
     pintor.limpiar();
+  }
+  if (key === 'g' || key === 'G') {
+    detectorMovimiento.reiniciarGestos();
   }
 }
