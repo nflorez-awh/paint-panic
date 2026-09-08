@@ -36,14 +36,13 @@ function setup() {
 function draw() {
   background(0);
 
-  // 1. Analizar los tres colores en un solo pase (pincel, selector, borrador)
+  // Analizar los tres colores (pincel, selector, borrador)
   detector.analizar(camara.video);
 
-  // 1.b Analizar MOVIMIENTO real por frame difference (requisito técnico
-  // central del proyecto): compara este frame contra el anterior.
+  // Analizar movimiento por Frame Difference
   detectorMovimiento.analizar(camara.video);
 
-  // 2. Armar la escena (fondo + trazos) en un buffer aparte
+  // Arma la escena
   escena.clear();
   if (configUI.fondoModo === 'camara') {
     camara.mostrar(escena);
@@ -53,11 +52,11 @@ function draw() {
   pintor.mostrar(escena);
   aplicarFiltro(escena, configUI.filtro);
 
-  // 3. Mostrar la escena ya compuesta (con filtro) en el canvas principal
   image(escena, 0, 0, width, height);
-// --- Actualizar y mostrar al personaje en el canvas principal ---
+
+  // Personaje
   if (personaje) {
-    // Se le pasa el detector de MOVIMIENTO (no el de color) para que
+    // Se le pasa el detector de MOVIMIENTO  para que
     // reaccione en tiempo real a lo que hacés frente a la cámara, y
     // configUI para que sus travesuras (bombas, filtros) puedan actuar.
     personaje.actualizar(pintor, detectorMovimiento, configUI);
@@ -96,7 +95,7 @@ function draw() {
   }
 }
 
-// Aplica el filtro elegido al buffer de la escena (fondo + trazos, no la UI)
+// FILTROS
 function aplicarFiltro(pg, tipo) {
   switch (tipo) {
     case 'gris':       pg.filter(GRAY); break;
@@ -109,8 +108,7 @@ function aplicarFiltro(pg, tipo) {
   }
 }
 
-// Árbol de categorías y opciones del menú de UI.
-// Cada nodo hoja (sin "children") tiene una "accion(config)" que modifica configUI.
+// ÁRBOL DE CATEGORÍAS
 function construirMenuTree() {
   return {
     id: 'root',
