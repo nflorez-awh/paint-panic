@@ -1,11 +1,5 @@
-// detector.js
 // Detecta tres colores en un único recorrido de la imagen de la cámara:
-//   - VERDE -> Pincel (pinta sobre el lienzo)
-//   - AZUL  -> Selector de interfaz (mueve/activa los botones de UI, como un mouse)
-//   - ROJO  -> Borrador (borra el lienzo)
-//
 // Cada color tiene su propio umbral mínimo de píxeles para considerarse "detectado",
-// evitando falsos positivos por ruido de la cámara o luces del ambiente.
 
 class DetectorMultiColor {
   constructor() {
